@@ -213,7 +213,7 @@ def process_pio_db(rg, device):
             if bel_idx is not None:
                 pindata.append((loc, bel_idx, bank, pinfunc, dqs))
 
-def write_database(dev_name, chip, rg, endianness):
+def write_database(dev_name, chip, rg, endianness, sorted_spine_rows):
     def write_loc(loc, sym_name):
         bba.u16(loc.x, "%s.x" % sym_name)
         bba.u16(loc.y, "%s.y" % sym_name)
@@ -394,6 +394,14 @@ def write_database(dev_name, chip, rg, endianness):
         bba.r_slice("supported_speed_grades_%s" % name, len(var_data["speeds"]), "supported_speed_grades")
         bba.r_slice("supported_suffixes_%s" % name, len(var_data["suffixes"]), "supported_suffixes")
 
+    if sorted_spine_rows:
+        bba.l("spine_info_rows", "int32_t")
+        for r in sorted_spine_rows:
+            bba.u32(r, "row")
+
+    bba.l("spine_info", "SpineInfoPOD")
+    bba.r_slice("spine_info_rows" if sorted_spine_rows else None, len(sorted_spine_rows), "rows")
+
     bba.l("chip_info")
     bba.s(chip.info.family, "family")
     bba.s(chip.info.name, "device_name")
@@ -408,6 +416,7 @@ def write_database(dev_name, chip, rg, endianness):
     bba.r_slice("pio_info", len(pindata), "pio_info")
     bba.r_slice("tiles_info", (max_col + 1) * (max_row + 1), "tile_info")
     bba.r_slice("variant_data", len(variants), "variant_info")
+    bba.r("spine_info", "spine_info")
 
     bba.pop()
     return bba
@@ -486,9 +495,30 @@ def main():
     rg = pytrellis.make_optimized_chipdb(chip, include_lutperm_pips=True, split_slice_mode=True)
     max_row = chip.get_max_row()
     max_col = chip.get_max_col()
+
+    spine_rows = set()
+    if hasattr(chip, 'global_data'):
+        # As per ecp5, quadrants are UL, UR, LL, LR
+        for x in range(0, max_col + 1):
+            for quad in ["UL", "UR", "LL", "LR"]:
+                try:
+                    # get_spine_driver returns a pair of (col, row)
+                    spinedrv = chip.global_data.get_spine_driver(quad, x)
+                    # in python it will be spinedrv[1] for row for std::pair<int, int>
+                    spine_rows.add(spinedrv[1])
+                except (IndexError, AttributeError, KeyError, TypeError):
+                    # Fallback for older pytrellis where it might be .first/.second
+                    try:
+                        spinedrv = chip.global_data.get_spine_driver(quad, x)
+                        spine_rows.add(spinedrv.second)
+                    except (AttributeError, KeyError, TypeError):
+                        pass
+
+    sorted_spine_rows = sorted(list(spine_rows))
+
     process_pio_db(rg, args.device)
     process_devices_db(chip.info.family, chip.info.name)
-    bba = write_database(args.device, chip, rg, "le")
+    bba = write_database(args.device, chip, rg, "le", sorted_spine_rows)
 
 
 

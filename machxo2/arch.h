@@ -145,6 +145,11 @@ NPNR_PACKED_STRUCT(struct ChipInfoPOD {
     RelSlice<PIOInfoPOD> pio_info;
     RelSlice<TileInfoPOD> tile_info;
     RelSlice<VariantInfoPOD> variants;
+    SpineInfoPOD spine_info;
+});
+
+NPNR_PACKED_STRUCT(struct SpineInfoPOD {
+    RelSlice<int32_t> rows;
 });
 
 /************************ End of chipdb section. ************************/
@@ -901,6 +906,8 @@ struct Arch : BaseArch<ArchRanges>
     delay_t getDelayFromNS(float ns) const override { return ns; }
     uint32_t getDelayChecksum(delay_t v) const override { return v; }
     //bool getBudgetOverride(const NetInfo *net_info, const PortRef &sink, delay_t &budget) const override;
+
+    bool is_spine_row(int row) const;
 
     // -------------------------------------------------
 
